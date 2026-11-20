@@ -1,0 +1,22 @@
+{
+  "name": "classify",
+  "version": "1.0.0",
+  "description": "Small-Batch Live EdTech Marketplace",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test",
+    "test:browser": "node testBrowserE2E.js",
+    "test": "npm run test:backend && npm run test:frontend"
+  },
+  "keywords": [
+    "edtech",
+    "small-batch",
+    "marketplace",
+    "react",
+    "express"
+  ],
+  "author": "Classify",
+  "license": "MIT"
+}
