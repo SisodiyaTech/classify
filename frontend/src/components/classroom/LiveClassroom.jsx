@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
@@ -21,7 +22,9 @@ import {
   Volume2,
   Share2,
   LayoutGrid,
-  Maximize2
+  Maximize2,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import Button from '../common/Button';
 import Badge from '../common/Badge';
@@ -34,8 +37,8 @@ export const LiveClassroom = () => {
   const navigate = useNavigate();
 
   // Find batch info
-  const batch = batches.find((b) => b.id === batchId) || batches[0];
-  const course = courses.find((c) => c.id === batch?.courseId) || courses[0];
+  const batch = batches.find((b) => b.id === batchId || b._id === batchId) || batches[0];
+  const course = courses.find((c) => c.id === batch?.courseId || c._id === batch?.course) || courses[0];
 
   // Classroom controls state
   const [isMicOn, setIsMicOn] = useState(true);
@@ -44,8 +47,11 @@ export const LiveClassroom = () => {
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [activeSidePanel, setActiveSidePanel] = useState('chat'); // 'chat', 'participants', null
   const [chatMessage, setChatMessage] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
 
-  // Mock small-batch participants
+  const socketRef = useRef(null);
+
+  // Mock initial small-batch participants
   const [participants, setParticipants] = useState([
     {
       id: 'p-inst',
@@ -54,16 +60,16 @@ export const LiveClassroom = () => {
       avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
       isMicOn: true,
       isVideoOn: true,
-      isHandRaised: false
+      isHandRaised: false,
     },
     {
       id: 'p-1',
-      name: 'Priya Sharma (You)',
-      role: 'Student',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+      name: user?.name ? `${user.name} (You)` : 'Priya Sharma (You)',
+      role: role === 'instructor' ? 'Instructor' : 'Student',
+      avatar: user?.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
       isMicOn: true,
       isVideoOn: true,
-      isHandRaised: false
+      isHandRaised: false,
     },
     {
       id: 'p-2',
@@ -72,7 +78,7 @@ export const LiveClassroom = () => {
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       isMicOn: false,
       isVideoOn: true,
-      isHandRaised: false
+      isHandRaised: false,
     },
     {
       id: 'p-3',
@@ -81,17 +87,8 @@ export const LiveClassroom = () => {
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       isMicOn: false,
       isVideoOn: true,
-      isHandRaised: true // demonstrates raise-hand indicator!
+      isHandRaised: true,
     },
-    {
-      id: 'p-4',
-      name: 'Tanvi Shah',
-      role: 'Student',
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-      isMicOn: true,
-      isVideoOn: false,
-      isHandRaised: false
-    }
   ]);
 
   // Real-time chat messages
@@ -100,31 +97,77 @@ export const LiveClassroom = () => {
       id: 'm1',
       sender: batch?.instructorName || 'Dr. Ananya Roy',
       time: '10:02 AM',
-      text: 'Good morning everyone! Please have your dough bowl and scale ready on your desk.'
+      text: 'Good morning everyone! Please have your materials ready on your desk.',
     },
     {
       id: 'm2',
       sender: 'Kabir Sen',
       time: '10:03 AM',
-      text: 'My room temperature is around 26°C today, should I adjust bulk fermentation time?'
+      text: 'My room temperature is around 26°C today, should I adjust fermentation time?',
     },
-    {
-      id: 'm3',
-      sender: batch?.instructorName || 'Dr. Ananya Roy',
-      time: '10:04 AM',
-      text: 'Yes Kabir! Check the visual rise and jiggle instead of relying purely on the timer. Hold your bowl to the camera in 2 mins.'
-    }
   ]);
 
   const messagesEndRef = useRef(null);
+
+  // Connect to live backend Socket.io
+  useEffect(() => {
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      timeout: 5000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setIsConnected(true);
+      socket.emit('join-classroom', {
+        batchId: batch?.id || batch?._id || 'demo-batch',
+        user: {
+          id: user?.id || user?._id || 'guest',
+          name: user?.name || 'Guest Student',
+          avatar: user?.avatar,
+          role: user?.role || 'student',
+        },
+      });
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
+    socket.on('new-message', (newMsg) => {
+      setMessages((prev) => [...prev, newMsg]);
+    });
+
+    socket.on('hand-toggled', ({ userName, isHandRaised: raised }) => {
+      if (raised) {
+        addToast(`${userName} raised their hand with a question!`, 'info');
+      }
+    });
+
+    socket.on('screen-share-changed', ({ userName, isSharing }) => {
+      if (isSharing) {
+        addToast(`${userName} started sharing their screen.`, 'info');
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [batch?.id, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleToggleHand = () => {
-    setIsHandRaised(!isHandRaised);
-    if (!isHandRaised) {
+    const nextState = !isHandRaised;
+    setIsHandRaised(nextState);
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('toggle-hand', { isHandRaised: nextState });
+    }
+    if (nextState) {
       addToast('You raised your hand. Instructor has been notified.', 'info');
     }
   };
@@ -133,14 +176,25 @@ export const LiveClassroom = () => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
 
-    const newMsg = {
-      id: `m-${Date.now()}`,
-      sender: user?.name || 'Priya Sharma',
-      time: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date()),
-      text: chatMessage.trim()
-    };
+    const messageText = chatMessage.trim();
 
-    setMessages((prev) => [...prev, newMsg]);
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('send-message', { text: messageText });
+    } else {
+      // Local fallback
+      const newMsg = {
+        id: `m-${Date.now()}`,
+        sender: user?.name || 'Priya Sharma',
+        time: new Intl.DateTimeFormat('en-US', {
+          hour: 'numeric',
+          minute: 'numeric',
+          hour12: true,
+        }).format(new Date()),
+        text: messageText,
+      };
+      setMessages((prev) => [...prev, newMsg]);
+    }
+
     setChatMessage('');
   };
 
@@ -179,10 +233,23 @@ export const LiveClassroom = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Socket Connection Indicator */}
+          <div
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
+              isConnected
+                ? 'bg-emerald-950/80 border-emerald-800 text-emerald-400'
+                : 'bg-brand-900 border-brand-800 text-gray-400'
+            }`}
+            title={isConnected ? 'Connected to live Socket.io backend' : 'Local mode active'}
+          >
+            {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            <span>{isConnected ? 'Socket Connected' : 'Local Classroom'}</span>
+          </div>
+
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-brand-800/80 border border-brand-700 text-xs text-gray-300">
             <Users className="w-3.5 h-3.5 text-accent" />
-            <span>{participants.length} Active in Batch</span>
+            <span>{participants.length} in Cohort</span>
           </div>
 
           <Button
@@ -206,10 +273,10 @@ export const LiveClassroom = () => {
               <div className="w-full h-full p-8 flex flex-col items-center justify-center bg-gray-900 text-center">
                 <Monitor className="w-16 h-16 text-brand-400 mb-4 animate-bounce" />
                 <h3 className="text-lg font-bold text-white mb-1">
-                  {user?.name} is Sharing Screen
+                  {user?.name || 'Instructor'} is Sharing Screen
                 </h3>
                 <p className="text-xs text-gray-400 max-w-sm">
-                  Live demonstration of flour hydration ratios and starter rise windowpane test.
+                  Live demonstration of techniques and real-time critique.
                 </p>
               </div>
             ) : (
@@ -232,7 +299,6 @@ export const LiveClassroom = () => {
                   </Badge>
                 </div>
 
-                {/* Audio waves */}
                 <div className="absolute bottom-4 left-4 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] text-gray-300">
                   <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Speaking • High Definition</span>
@@ -243,7 +309,7 @@ export const LiveClassroom = () => {
 
           {/* Student Small-Batch Video Grid */}
           <div className="h-32 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
-            {participants.slice(1, 5).map((p) => (
+            {participants.map((p) => (
               <div
                 key={p.id}
                 className="relative rounded-xl overflow-hidden bg-brand-900 border border-brand-800 flex items-center justify-center shadow-subtle group"
@@ -260,7 +326,6 @@ export const LiveClassroom = () => {
                   </div>
                 )}
 
-                {/* Name tag */}
                 <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[11px] bg-brand-950/80 backdrop-blur-md px-2 py-0.5 rounded-md truncate">
                   <span className="truncate text-gray-200">{p.name}</span>
                   {p.isHandRaised && (
@@ -270,7 +335,6 @@ export const LiveClassroom = () => {
                   )}
                 </div>
 
-                {/* Mic status icon */}
                 <div className="absolute top-2 right-2 p-1 rounded-md bg-black/50 text-white text-[10px]">
                   {p.isMicOn ? (
                     <Mic className="w-3 h-3 text-emerald-400" />
@@ -298,7 +362,7 @@ export const LiveClassroom = () => {
                   }`}
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  Chat
+                  Live Chat
                 </button>
                 <button
                   onClick={() => setActiveSidePanel('participants')}
@@ -324,10 +388,9 @@ export const LiveClassroom = () => {
             {/* Panel Content */}
             {activeSidePanel === 'chat' ? (
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Messages list */}
                 <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
                   <div className="p-2.5 rounded-xl bg-brand-950/60 border border-brand-800 text-[11px] text-gray-400 leading-relaxed text-center">
-                    Welcome to the live session! Direct student-teacher interaction is encouraged. Use the raise hand button to speak.
+                    Welcome to this live cohort session! Feel free to ask questions directly.
                   </div>
 
                   {messages.map((msg) => (
@@ -344,13 +407,12 @@ export const LiveClassroom = () => {
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Chat input */}
                 <form onSubmit={handleSendMessage} className="p-3 border-t border-brand-800 bg-brand-950/60 flex gap-2">
                   <input
                     type="text"
                     value={chatMessage}
                     onChange={(e) => setChatMessage(e.target.value)}
-                    placeholder="Ask a question in batch chat..."
+                    placeholder="Ask a question in cohort chat..."
                     className="flex-1 rounded-xl bg-brand-900 border border-brand-700 px-3 py-2 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                   />
                   <button
@@ -362,10 +424,9 @@ export const LiveClassroom = () => {
                 </form>
               </div>
             ) : (
-              /* Participants List */
               <div className="flex-1 p-4 overflow-y-auto space-y-2 text-xs">
                 <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400 mb-2">
-                  Enrolled Students in this Cohort
+                  Cohort Members (Max {batch?.maxCapacity || 12} Students)
                 </p>
                 {participants.map((p) => (
                   <div
@@ -406,16 +467,13 @@ export const LiveClassroom = () => {
 
       {/* Bottom Floating Control Bar */}
       <footer className="h-20 bg-brand-950 border-t border-brand-800 px-4 sm:px-8 flex items-center justify-between shrink-0">
-        {/* Left info */}
         <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
           <span>Batch Cap: <strong className="text-white">{batch?.maxCapacity || 12}</strong></span>
           <span>•</span>
           <span>Class duration: <strong className="text-white">{batch?.durationMinutes || 90}m</strong></span>
         </div>
 
-        {/* Center AV Buttons */}
         <div className="flex items-center gap-2.5 mx-auto sm:mx-0">
-          {/* Mic */}
           <button
             onClick={() => setIsMicOn(!isMicOn)}
             className={`p-3 rounded-2xl border transition-all ${
@@ -428,7 +486,6 @@ export const LiveClassroom = () => {
             {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
           </button>
 
-          {/* Camera */}
           <button
             onClick={() => setIsVideoOn(!isVideoOn)}
             className={`p-3 rounded-2xl border transition-all ${
@@ -441,12 +498,15 @@ export const LiveClassroom = () => {
             {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
           </button>
 
-          {/* Screen Share */}
           <button
             onClick={() => {
-              setIsScreenSharing(!isScreenSharing);
+              const nextShare = !isScreenSharing;
+              setIsScreenSharing(nextShare);
+              if (socketRef.current?.connected) {
+                socketRef.current.emit('screen-share-status', { isSharing: nextShare });
+              }
               addToast(
-                isScreenSharing ? 'Stopped screen sharing.' : 'Started screen sharing presentation.',
+                nextShare ? 'Started screen sharing.' : 'Stopped screen sharing.',
                 'info'
               );
             }}
@@ -460,7 +520,6 @@ export const LiveClassroom = () => {
             <Monitor className="w-5 h-5" />
           </button>
 
-          {/* Raise Hand */}
           <button
             onClick={handleToggleHand}
             className={`p-3 rounded-2xl border transition-all ${
@@ -474,7 +533,6 @@ export const LiveClassroom = () => {
           </button>
         </div>
 
-        {/* Right side panel toggles */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveSidePanel(activeSidePanel === 'chat' ? null : 'chat')}

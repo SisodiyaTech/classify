@@ -1,14 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { mockCourses as initialCourses } from '../data/mockCourses';
 import { mockBatches as initialBatches } from '../data/mockBatches';
-import { 
+import {
   mockEnrollments as initialEnrollments,
   mockLiveClasses as initialLiveClasses,
   mockAssignments as initialAssignments,
   mockPayments as initialPayments,
-  mockCertificates as initialCertificates
+  mockCertificates as initialCertificates,
 } from '../data/mockEnrollments';
 import { mockUsers as initialUsers } from '../data/mockUsers';
+
+import { courseService } from '../services/courseService';
+import { batchService } from '../services/batchService';
+import { paymentService } from '../services/paymentService';
+import { adminService } from '../services/adminService';
+import { authService } from '../services/authService';
 
 const AppContext = createContext(null);
 
@@ -61,6 +67,31 @@ export const AppProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : initialUsers;
   });
 
+  // Backend synchronization on initial load
+  useEffect(() => {
+    const syncWithBackend = async () => {
+      try {
+        const courseRes = await courseService.getAllCourses();
+        if (courseRes?.courses?.length > 0) {
+          setCourses(courseRes.courses);
+        }
+      } catch (err) {
+        // Fall back gracefully to local storage
+      }
+
+      try {
+        const batchRes = await batchService.getBatches();
+        if (batchRes?.batches?.length > 0) {
+          setBatches(batchRes.batches);
+        }
+      } catch (err) {
+        // Fall back gracefully
+      }
+    };
+
+    syncWithBackend();
+  }, []);
+
   // Sync to localStorage
   useEffect(() => {
     localStorage.setItem('classify_courses', JSON.stringify(courses));
@@ -91,7 +122,17 @@ export const AppProvider = ({ children }) => {
   }, [users]);
 
   // Actions: Courses
-  const addCourse = (newCourseData, currentUser) => {
+  const addCourse = async (newCourseData, currentUser) => {
+    try {
+      const res = await courseService.createCourse(newCourseData);
+      if (res?.course) {
+        setCourses((prev) => [res.course, ...prev]);
+        return res.course;
+      }
+    } catch (err) {
+      console.warn('[Course] API createCourse fallback:', err.message);
+    }
+
     const courseId = `course-${Date.now()}`;
     const newCourse = {
       id: courseId,
@@ -108,45 +149,72 @@ export const AppProvider = ({ children }) => {
       totalEnrolledStudents: 0,
       activeBatchesCount: 0,
       status: 'Pending Review', // Requires admin approval
-      createdAt: new Date().toISOString().split('T')[0]
+      createdAt: new Date().toISOString().split('T')[0],
     };
 
     setCourses((prev) => [newCourse, ...prev]);
     return newCourse;
   };
 
-  const updateCourseStatus = (courseId, status) => {
+  const updateCourseStatus = async (courseId, status) => {
+    try {
+      await adminService.updateCourseStatus(courseId, status);
+    } catch (err) {
+      console.warn('[Admin] API updateCourseStatus fallback:', err.message);
+    }
+
     setCourses((prev) =>
-      prev.map((c) => (c.id === courseId ? { ...c, status } : c))
+      prev.map((c) => (c.id === courseId || c._id === courseId ? { ...c, status } : c))
     );
   };
 
-  const deleteCourse = (courseId) => {
-    setCourses((prev) => prev.filter((c) => c.id !== courseId));
+  const deleteCourse = async (courseId) => {
+    try {
+      await courseService.deleteCourse(courseId);
+    } catch (err) {
+      console.warn('[Course] API deleteCourse fallback:', err.message);
+    }
+
+    setCourses((prev) => prev.filter((c) => c.id !== courseId && c._id !== courseId));
   };
 
   // Actions: Batches
-  const addBatch = (batchData, course, instructor) => {
+  const addBatch = async (batchData, course, instructor) => {
     const maxCap = Math.min(Number(batchData.maxCapacity) || 12, 50); // Hard rule: max 50
+    const payload = {
+      ...batchData,
+      courseId: course.id || course._id,
+      maxCapacity: maxCap,
+    };
+
+    try {
+      const res = await batchService.createBatch(payload);
+      if (res?.batch) {
+        setBatches((prev) => [res.batch, ...prev]);
+        return res.batch;
+      }
+    } catch (err) {
+      console.warn('[Batch] API createBatch fallback:', err.message);
+    }
+
     const newBatch = {
       id: `batch-${Date.now()}`,
-      courseId: course.id,
+      courseId: course.id || course._id,
       courseTitle: course.title,
-      instructorId: instructor.id,
+      instructorId: instructor.id || instructor._id,
       instructorName: instructor.name,
       ...batchData,
       maxCapacity: maxCap,
       enrolledCount: 0,
       status: 'Upcoming',
-      liveClassLink: `/classroom/batch-${Date.now()}`
+      liveClassLink: `/classroom/batch-${Date.now()}`,
     };
 
     setBatches((prev) => [newBatch, ...prev]);
 
-    // Update course active batches count
     setCourses((prev) =>
       prev.map((c) =>
-        c.id === course.id
+        c.id === course.id || c._id === course._id
           ? { ...c, activeBatchesCount: (c.activeBatchesCount || 0) + 1 }
           : c
       )
@@ -155,17 +223,46 @@ export const AppProvider = ({ children }) => {
     return newBatch;
   };
 
-  const updateBatch = (batchId, updatedFields) => {
+  const updateBatch = async (batchId, updatedFields) => {
+    try {
+      await batchService.updateBatch(batchId, updatedFields);
+    } catch (err) {
+      console.warn('[Batch] API updateBatch fallback:', err.message);
+    }
+
     setBatches((prev) =>
-      prev.map((b) => (b.id === batchId ? { ...b, ...updatedFields } : b))
+      prev.map((b) => (b.id === batchId || b._id === batchId ? { ...b, ...updatedFields } : b))
     );
   };
 
   // Actions: Enrollment & Payment
-  const enrollStudent = (student, course, batch, paymentDetails) => {
-    // Check capacity rule
+  const enrollStudent = async (student, course, batch, paymentDetails) => {
     if (batch.enrolledCount >= batch.maxCapacity) {
-      return { success: false, error: 'This batch has reached its maximum capacity of 50 students.' };
+      return {
+        success: false,
+        error: 'This batch has reached its maximum capacity of 50 students.',
+      };
+    }
+
+    try {
+      const res = await paymentService.enrollBatch(
+        batch.id || batch._id,
+        paymentDetails.method || 'Card / UPI'
+      );
+      if (res?.enrollment && res?.payment) {
+        setPayments((prev) => [res.payment, ...prev]);
+        setEnrollments((prev) => [res.enrollment, ...prev]);
+        setBatches((prev) =>
+          prev.map((b) =>
+            b.id === batch.id || b._id === batch._id
+              ? { ...b, enrolledCount: b.enrolledCount + 1 }
+              : b
+          )
+        );
+        return { success: true, enrollment: res.enrollment, payment: res.payment };
+      }
+    } catch (err) {
+      console.warn('[Enrollment] API enrollBatch fallback:', err.message);
     }
 
     const txnId = `TXN-${Math.floor(10000000 + Math.random() * 90000000)}`;
@@ -175,32 +272,32 @@ export const AppProvider = ({ children }) => {
 
     const newPayment = {
       id: txnId,
-      studentId: student.id,
+      studentId: student.id || student._id,
       studentName: student.name,
       courseTitle: course.title,
       batchName: batch.name,
       instructorName: course.instructorName || batch.instructorName,
-      instructorId: batch.instructorId,
+      instructorId: batch.instructorId || batch.instructor,
       amount: fee,
       platformFee,
       instructorPayout,
       method: paymentDetails.method || 'Card / UPI',
       status: 'Completed',
       date: new Date().toISOString(),
-      receiptUrl: '#'
+      receiptUrl: '#',
     };
 
     const newEnrollment = {
       id: `enr-${Date.now()}`,
-      studentId: student.id,
+      studentId: student.id || student._id,
       studentName: student.name,
       studentEmail: student.email,
       studentAvatar: student.avatar,
-      courseId: course.id,
+      courseId: course.id || course._id,
       courseTitle: course.title,
-      batchId: batch.id,
+      batchId: batch.id || batch._id,
       batchName: batch.name,
-      instructorId: batch.instructorId,
+      instructorId: batch.instructorId || batch.instructor,
       instructorName: batch.instructorName,
       enrolledAt: new Date().toISOString().split('T')[0],
       amountPaid: fee,
@@ -214,21 +311,22 @@ export const AppProvider = ({ children }) => {
         date: batch.startDate,
         time: batch.timing,
         status: 'Scheduled',
-        joinUrl: `/classroom/${batch.id}`
-      }
+        joinUrl: `/classroom/${batch.id || batch._id}`,
+      },
     };
 
-    // Update state
     setPayments((prev) => [newPayment, ...prev]);
     setEnrollments((prev) => [newEnrollment, ...prev]);
     setBatches((prev) =>
       prev.map((b) =>
-        b.id === batch.id ? { ...b, enrolledCount: b.enrolledCount + 1 } : b
+        b.id === batch.id || b._id === batch._id
+          ? { ...b, enrolledCount: b.enrolledCount + 1 }
+          : b
       )
     );
     setCourses((prev) =>
       prev.map((c) =>
-        c.id === course.id
+        c.id === course.id || c._id === course._id
           ? { ...c, totalEnrolledStudents: (c.totalEnrolledStudents || 0) + 1 }
           : c
       )
@@ -241,12 +339,12 @@ export const AppProvider = ({ children }) => {
   const submitAssignment = (assignmentId, fileData) => {
     setAssignments((prev) =>
       prev.map((asg) =>
-        asg.id === assignmentId
+        asg.id === assignmentId || asg._id === assignmentId
           ? {
               ...asg,
               status: 'Submitted',
               submittedFile: fileData.fileName || 'Assignment_Submission.pdf',
-              submittedAt: new Date().toISOString().split('T')[0]
+              submittedAt: new Date().toISOString().split('T')[0],
             }
           : asg
       )
@@ -254,26 +352,50 @@ export const AppProvider = ({ children }) => {
   };
 
   // Actions: Instructor Verification & Admin actions
-  const updateInstructorVerification = (instructorId, status) => {
+  const updateInstructorVerification = async (instructorId, status) => {
+    try {
+      await adminService.updateInstructorStatus(instructorId, status);
+    } catch (err) {
+      console.warn('[Admin] API updateInstructorStatus fallback:', err.message);
+    }
+
     setUsers((prev) =>
       prev.map((u) =>
-        u.id === instructorId ? { ...u, verificationStatus: status } : u
+        u.id === instructorId || u._id === instructorId
+          ? { ...u, verificationStatus: status }
+          : u
       )
     );
   };
 
-  const submitInstructorApplication = (instructorId, applicationData) => {
+  const submitInstructorApplication = async (instructorId, applicationData) => {
+    try {
+      await authService.submitInstructorVerification(applicationData);
+    } catch (err) {
+      console.warn('[Instructor] API submitVerification fallback:', err.message);
+    }
+
     setUsers((prev) =>
       prev.map((u) => {
-        if (u.id === instructorId) {
+        if (u.id === instructorId || u._id === instructorId) {
           return {
             ...u,
             ...applicationData,
             verificationStatus: 'Pending Review',
             verificationDocuments: [
-              { name: 'ID_Proof_Verification.pdf', type: 'Government ID', uploadedAt: new Date().toISOString().split('T')[0], status: 'Pending Review' },
-              { name: 'Expertise_Credentials.pdf', type: 'Skill Certificate', uploadedAt: new Date().toISOString().split('T')[0], status: 'Pending Review' }
-            ]
+              {
+                name: 'ID_Proof_Verification.pdf',
+                type: 'Government ID',
+                uploadedAt: new Date().toISOString().split('T')[0],
+                status: 'Pending Review',
+              },
+              {
+                name: 'Expertise_Credentials.pdf',
+                type: 'Skill Certificate',
+                uploadedAt: new Date().toISOString().split('T')[0],
+                status: 'Pending Review',
+              },
+            ],
           };
         }
         return u;
@@ -300,7 +422,7 @@ export const AppProvider = ({ children }) => {
         enrollStudent,
         submitAssignment,
         updateInstructorVerification,
-        submitInstructorApplication
+        submitInstructorApplication,
       }}
     >
       {children}
@@ -315,3 +437,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+export default AppContext;
