@@ -1,0 +1,100 @@
+export const mockUsers = [
+  {
+    id: 'user-student-1',
+    name: 'Priya Sharma',
+    email: 'priya.sharma@example.com',
+    role: 'student',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    headline: 'Lifelong Learner & Culinary Enthusiast',
+    bio: 'Software engineer by day, passionate home baker and calligraphy learner by evening. Loving the interactive small batches on Classify!',
+    location: 'Bangalore, India',
+    joinedDate: '2026-01-10',
+    enrolledCoursesCount: 3,
+    attendanceRate: 94,
+    phone: '+91 98765 43210'
+  },
+  {
+    id: 'user-instructor-1',
+    name: 'Dr. Ananya Roy',
+    email: 'ananya.roy@example.com',
+    role: 'instructor',
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    headline: 'Artisanal Baker & Sourdough Consultant',
+    bio: 'Ex-food scientist turned artisanal sourdough baker with 12+ years experience. I run small-batch interactive coaching where every student gets personalized fermentation critique.',
+    location: 'Pune, India',
+    joinedDate: '2025-11-15',
+    verificationStatus: 'Approved', // Approved, Pending Review, Not Submitted, Rejected
+    verificationDocuments: [
+      { name: 'Govt_ID_Passport.pdf', type: 'Identity Proof', uploadedAt: '2025-11-16', status: 'Verified' },
+      { name: 'Culinary_Science_Master_Cert.pdf', type: 'Academic / Skill Certificate', uploadedAt: '2025-11-16', status: 'Verified' }
+    ],
+    videoIntroUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    skills: ['Sourdough Fermentation', 'French Viennoiserie', 'Artisanal Bread', 'Gluten Science'],
+    languages: ['English', 'Hindi', 'Bengali'],
+    experienceYears: 12,
+    rating: 4.95,
+    totalReviews: 86,
+    totalStudents: 142,
+    totalEarnings: 384500,
+    availableBalance: 42000,
+    phone: '+91 98230 11223'
+  },
+  {
+    id: 'user-instructor-2',
+    name: 'Sunita Deshmukh',
+    email: 'sunita.crafts@example.com',
+    role: 'instructor',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    headline: 'Traditional Madhubani & Warli Folk Artist',
+    bio: 'Homemaker and certified traditional folk artist. Teaching traditional Indian folk arts to students worldwide in intimate live batches of 10 students.',
+    location: 'Nagpur, India',
+    joinedDate: '2026-02-01',
+    verificationStatus: 'Pending Review', // Demonstration for Admin Approval
+    verificationDocuments: [
+      { name: 'Aadhaar_ID_Verified.pdf', type: 'Identity Proof', uploadedAt: '2026-02-02', status: 'Pending Review' },
+      { name: 'National_Craft_Master_Diploma.pdf', type: 'Skill Certificate', uploadedAt: '2026-02-02', status: 'Pending Review' }
+    ],
+    videoIntroUrl: 'https://example.com/sunita-intro.mp4',
+    skills: ['Madhubani Painting', 'Warli Art', 'Natural Pigments', 'Fabric Painting'],
+    languages: ['Hindi', 'Marathi', 'English'],
+    experienceYears: 8,
+    rating: 4.88,
+    totalReviews: 24,
+    totalStudents: 45,
+    totalEarnings: 82000,
+    availableBalance: 16500,
+    phone: '+91 97654 32109'
+  },
+  {
+    id: 'user-instructor-3',
+    name: 'Rohan Varma',
+    email: 'rohan.tech@example.com',
+    role: 'instructor',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    headline: 'Senior Frontend Architect & Mentor',
+    bio: 'Fullstack tech lead helping beginners and career switchers master modern JavaScript, React, and practical web apps with hands-on live code reviews.',
+    location: 'Hyderabad, India',
+    joinedDate: '2025-10-20',
+    verificationStatus: 'Approved',
+    skills: ['JavaScript ES6+', 'React.js', 'Tailwind CSS', 'Web Performance'],
+    languages: ['English', 'Telugu', 'Hindi'],
+    experienceYears: 9,
+    rating: 4.92,
+    totalReviews: 64,
+    totalStudents: 98,
+    totalEarnings: 295000,
+    availableBalance: 31000,
+    phone: '+91 99887 76655'
+  },
+  {
+    id: 'user-admin-1',
+    name: 'Arjun Mehta',
+    email: 'admin@classify.ed',
+    role: 'admin',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    headline: 'Classify Platform Administrator',
+    location: 'Mumbai, India',
+    joinedDate: '2025-08-01',
+    phone: '+91 98111 22233'
+  }
+];
