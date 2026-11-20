@@ -25,7 +25,7 @@ const courseSchema = new mongoose.Schema(
     },
     level: {
       type: String,
-      enum: ['Beginner', 'Intermediate', 'Advanced', 'All Levels'],
+      enum: ['Beginner', 'Intermediate', 'Advanced', 'All Levels', 'Beginner to Intermediate'],
       default: 'Beginner',
     },
     language: {
@@ -91,11 +91,10 @@ const courseSchema = new mongoose.Schema(
 );
 
 // Auto generate slug
-courseSchema.pre('save', function (next) {
+courseSchema.pre('save', function () {
   if (this.isModified('title')) {
     this.slug = this.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   }
-  next();
 });
 
 export const Course = mongoose.model('Course', courseSchema);

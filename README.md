@@ -103,6 +103,19 @@ Start the Vite development server:
 npm run dev   # Runs on http://localhost:5173
 ```
 
+### 4. Running Automated Tests
+Classify includes a complete end-to-end integration and feature test suite covering all authentication flows, small-batch business rules, financial escrow split, live Socket.io signaling, and admin moderation:
+
+```bash
+# Run backend 33-point integration test suite
+cd backend
+npm test
+
+# Run frontend component & route structure verification
+cd frontend
+npm test
+```
+
 ---
 
 ## 👥 Demo Accounts (Pre-configured via Seed)
